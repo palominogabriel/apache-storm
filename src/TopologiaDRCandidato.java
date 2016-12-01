@@ -23,6 +23,8 @@ public class TopologiaDRCandidato {
     private TopologiaDRCandidato() {
     }
 
+    //test
+
     private static class PrestaContasSpout extends BaseRichSpout {
         private SpoutOutputCollector _collector;
         private BufferedReader br;
