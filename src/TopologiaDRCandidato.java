@@ -23,13 +23,11 @@ public class TopologiaDRCandidato {
     private TopologiaDRCandidato() {
     }
 
-    //test
-
     private static class PrestaContasSpout extends BaseRichSpout {
         private SpoutOutputCollector _collector;
         private BufferedReader br;
-        private String host;// = ipSocketEmmiter; // 10.1.1.200;
-        private int portNumber;// = portaSocketEmmiter; // 9643;
+        private String host; // 10.1.1.200;
+        private int portNumber; // 9643;
         private Socket socket;
         private PrintWriter out;
 
@@ -42,12 +40,9 @@ public class TopologiaDRCandidato {
         public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
             _collector = collector;
 
-//            host = ipSocketEmmiter; // 10.1.1.200
-//            portNumber = portaSocketEmmiter; // 9643
 
             try {
                 socket = new Socket(host, portNumber);
-//                socket = new Socket(ipSocketEmmiter.toString(), (int) portaSocketEmmiter);
                 br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
             } catch (Exception ignored) {
@@ -132,23 +127,13 @@ public class TopologiaDRCandidato {
         private String tipoArquivo;
         private String estadoCandidato;
         private double valor;
+        private double valorAnterior;
 
         // Initialize the class methods
         @Override
         public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
             countMap = new HashMap<String, Double>();
             collector = outputCollector;
-        }
-
-        void somaValorMap(String nomeCandidato, double valorDR) {
-            double valorAnterior;
-            // Creates the entry to the data structure if it is the candidate first entry
-            if (countMap.get(nomeCandidato) == null) {
-                countMap.put(nomeCandidato, valorDR);
-            } else { // Sum the candidate expense to the total amout saved at the data structure
-                valorAnterior = countMap.get(nomeCandidato);
-                countMap.put(nomeCandidato, valorDR+valorAnterior);
-            }
         }
 
         @Override
@@ -163,10 +148,18 @@ public class TopologiaDRCandidato {
             estadoCandidato = tuple.getStringByField("estadoCandidato");
             // Converts the String value to double in order to make the sum
             valor = Double.parseDouble(valorDRS);
+
             // Sums the expense to the candidate amount
-            somaValorMap(nomeCandidato,valor);
+            // Creates the entry to the data structure if it is the candidate first entry
+            if (countMap.get(nomeCandidato+tipoArquivo) == null) {
+                countMap.put(nomeCandidato+tipoArquivo, valor);
+            } else { // Sum the candidate expense or income to the total amout saved at the data structure
+                valorAnterior = countMap.get(nomeCandidato+tipoArquivo);
+                countMap.put(nomeCandidato+tipoArquivo, valor+valorAnterior);
+            }
+
             // Sends the candidate sums to the next bolt
-            collector.emit(new Values(tipoArquivo, estadoCandidato, nomeCandidato, countMap.get(nomeCandidato).toString()));
+            collector.emit(new Values(tipoArquivo, estadoCandidato, nomeCandidato, countMap.get(nomeCandidato+tipoArquivo).toString()));
         }
 
         @Override
@@ -180,8 +173,8 @@ public class TopologiaDRCandidato {
         private String valorDR;
         private String tipoArquivo;
         private String estadoCandidato;
-        private String host; //= ipSocketReceiver; // 10.1.1.200;
-        private int portNumber;// = portaSocketReceiver; // 9644;
+        private String host; // 10.1.1.200;
+        private int portNumber; // 9644;
         private Socket socket = null;
         private BufferedReader br;
         private PrintWriter out;
@@ -193,12 +186,9 @@ public class TopologiaDRCandidato {
 
         @Override
         public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
-//            host = ipSocketReceiver; // 10.1.1.200
-//            portNumber = portaSocketReceiver; // 9644
 
             try {
                 socket = new Socket(host, portNumber);
-//                socket = new Socket(ipSocketReceiver, portaSocketReceiver);
                 br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
             } catch (Exception e) {
@@ -208,16 +198,6 @@ public class TopologiaDRCandidato {
 
         @Override
         public void execute(Tuple tuple) {
-
-//            if(socket.isClosed()){
-//                try {
-//                    socket = new Socket(host, portNumber);
-//                    br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-//                    out = new PrintWriter(socket.getOutputStream(), true);
-//                } catch (Exception e) {
-//                    e.printStackTrace();
-//                }
-//            }
 
             nomeCandidato = tuple.getStringByField("nomeCandidato");
 
@@ -229,37 +209,6 @@ public class TopologiaDRCandidato {
 
             out.println(tipoArquivo + "\t" + estadoCandidato + "\t" + nomeCandidato + "\t" + valorDR);
 
-//            if(tipoArquivo.equals("CLOSE")){
-//                try {
-//                    out.close();
-//                    br.close();
-//                    socket.close();
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-
-
-//            nomeCandidato = tuple.getStringByField("nomeCandidato");
-//            nomeArquivo = outputPath + nomeCandidato + ".txt";
-//            valorDR = tuple.getStringByField("valorDR");
-//            try {
-//
-//                File file = new File(nomeArquivo);
-//
-//                // if file doesnt exists, then create it
-//                if (!file.exists()) {
-//
-//                    file.createNewFile();
-//                }
-//
-//                FileWriter fw = new FileWriter(file.getAbsoluteFile());
-//                BufferedWriter bw = new BufferedWriter(fw);
-//                bw.write(nomeCandidato+"\t"+valorDR);
-//                bw.close();
-//
-//            } catch (IOException ignore) {
-//            }
         }
 
         public void declareOutputFields(OutputFieldsDeclarer declarer) {
@@ -267,19 +216,114 @@ public class TopologiaDRCandidato {
         }
     }
 
+    private static class SomaEstadoClassificaBolt extends BaseRichBolt{
+        private OutputCollector collector;
+        private Map<String, Double> countMap;
+
+        private String nomeCandidato;
+        private String valorDRS;
+        private String tipoArquivo;
+        private String estadoCandidato;
+        private double valor;
+        private double valorAnterior;
+
+        @Override
+        public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
+            collector = outputCollector;
+            countMap = new HashMap<String,Double>();
+
+        }
+
+        @Override
+        public void execute(Tuple tuple) {
+            // Gets from the emmited tuple the expense value
+            valorDRS = tuple.getStringByField("valorDR");
+            // Gets the type of file
+            tipoArquivo = tuple.getStringByField("tipoArquivo");
+            // Gets the state of the candidate
+            estadoCandidato = tuple.getStringByField("estadoCandidato");
+            // Converts the String value to double in order to make the sum
+            valor = Double.parseDouble(valorDRS);
+
+            // Sums the expense to the candidate amount
+            // Creates the entry to the data structure if it is the candidate first entry
+            if (countMap.get(estadoCandidato+tipoArquivo) == null) {
+                countMap.put(estadoCandidato+tipoArquivo, valor);
+            } else { // Sum the candidate expense to the total amount saved at the data structure
+                valorAnterior = countMap.get(estadoCandidato+tipoArquivo);
+                countMap.put(estadoCandidato+tipoArquivo, valor+valorAnterior);
+            }
+
+            // Sends the candidate sums to the next bolt
+            collector.emit(new Values(tipoArquivo, estadoCandidato, countMap.get(estadoCandidato+tipoArquivo).toString()));
+        }
+
+        @Override
+        public void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
+            outputFieldsDeclarer.declare(new Fields("tipoArquivo", "estadoCandidato", "totalEstadoDR"));
+        }
+    }
+
+    private static class ImpressorEstadoBolt extends BaseRichBolt{
+        private String nomeCandidato;
+        private String valorDR;
+        private String tipoArquivo;
+        private String estadoCandidato;
+        private String host; // 10.1.1.200;
+        private int portNumber; // 9644;
+        private Socket socket = null;
+        private BufferedReader br;
+        private PrintWriter out;
+
+        public ImpressorEstadoBolt(String host, int portNumber){
+            this.host = host;
+            this.portNumber = portNumber;
+        }
+
+        @Override
+        public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
+
+            try {
+                socket = new Socket(host, portNumber);
+                br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+            } catch (Exception e) {
+                System.out.println("Falha ao tentar conectar-se ao servidor de escrita de Estado");
+            }
+        }
+
+        @Override
+        public void execute(Tuple tuple) {
+
+            valorDR = tuple.getStringByField("totalEstadoDR");
+
+            tipoArquivo = tuple.getStringByField("tipoArquivo");
+
+            estadoCandidato = tuple.getStringByField("estadoCandidato");
+
+            out.println(tipoArquivo + "\t" + estadoCandidato + "\t" +  valorDR);
+
+        }
+
+        public void declareOutputFields(OutputFieldsDeclarer declarer) {
+            // nothing to add - since it is the final bolt
+        }
+    }
+
+
     public static void main(String[] args) throws Exception {
         String ipSocketEmmiter;
         int portaSocketEmmiter;
         String ipSocketReceiver;
         int portaSocketReceiver;
+        String ipSocketEstadoReceiver;
+        int portaSocketEstadoReceiver;
 
         TopologyBuilder builder = new TopologyBuilder();
         Config conf = new Config();
         conf.setDebug(true);
 
-        if(args.length == 5) {
-
-            System.out.println(args[0] + "\n" + args[1] + "\n" + args[2] + "\n" + args[3] + "\n" + args[4]);
+        if(args.length == 7) {
 
             ipSocketEmmiter = args[1];
 
@@ -297,11 +341,23 @@ public class TopologiaDRCandidato {
                 portaSocketReceiver = 9999;
             }
 
+            ipSocketEstadoReceiver = args[5];
+
+            try {
+                portaSocketEstadoReceiver = Integer.parseInt(args[6]);
+            } catch (Exception e){
+                portaSocketEstadoReceiver = 9999;
+            }
+
             builder.setSpout("prestacao-contas-spout", new PrestaContasSpout(ipSocketEmmiter,portaSocketEmmiter), 1);
 
             builder.setBolt("filtra-bolt", new FiltraContas(), 20).shuffleGrouping("prestacao-contas-spout");
 
             builder.setBolt("soma-bolt", new SomaContasBolt(), 20).fieldsGrouping("filtra-bolt", new Fields("nomeCandidato"));
+
+            builder.setBolt("soma-estado-bolt", new SomaEstadoClassificaBolt(), 26).fieldsGrouping("filtra-bolt", new Fields("estadoCandidato"));
+
+            builder.setBolt("impressor-estado-bolt", new ImpressorEstadoBolt(ipSocketEstadoReceiver,portaSocketEstadoReceiver),1).globalGrouping("soma-estado-bolt");
 
             builder.setBolt("impressor-bolt", new ImpressorBolt(ipSocketReceiver, portaSocketReceiver), 1).globalGrouping("soma-bolt");
 
@@ -312,12 +368,14 @@ public class TopologiaDRCandidato {
             conf.setMaxTaskParallelism(4);
 
         } else {
-            System.out.println("ERRO: Para a submissao da topologia é necessario 5 argumentos sendo eles:" +
+            System.out.println("ERRO: Para a submissao da topologia é necessario 7 argumentos sendo eles:" +
                     "\n1 - Nome da Topologia" +
                     "\n2 - IP do servidor emissor dos dados" +
                     "\n3 - Porta do servidor emissor de dados" +
                     "\n4 - IP do servidor de escrita de dados" +
-                    "\n5 - Porta do servidor de escrita de dados");
+                    "\n5 - Porta do servidor de escrita de dados" +
+                    "\n6 - IP do servidor de escrita de Estado" +
+                    "\n7 - Porta do servidor de escrita de Estado");
         }
     }
 }
