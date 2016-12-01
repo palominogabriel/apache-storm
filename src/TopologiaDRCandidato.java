@@ -31,7 +31,7 @@ public class TopologiaDRCandidato {
         private Socket socket;
         private PrintWriter out;
 
-        public PrestaContasSpout(String host, int portNumber){
+        PrestaContasSpout(String host, int portNumber){
             this.host = host;
             this.portNumber = portNumber;
         }
@@ -39,7 +39,6 @@ public class TopologiaDRCandidato {
         @Override
         public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
             _collector = collector;
-
 
             try {
                 socket = new Socket(host, portNumber);
@@ -179,7 +178,7 @@ public class TopologiaDRCandidato {
         private BufferedReader br;
         private PrintWriter out;
 
-        public ImpressorBolt(String host, int portNumber){
+        ImpressorBolt(String host, int portNumber){
             this.host = host;
             this.portNumber = portNumber;
         }
@@ -220,7 +219,6 @@ public class TopologiaDRCandidato {
         private OutputCollector collector;
         private Map<String, Double> countMap;
 
-        private String nomeCandidato;
         private String valorDRS;
         private String tipoArquivo;
         private String estadoCandidato;
@@ -230,7 +228,7 @@ public class TopologiaDRCandidato {
         @Override
         public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
             collector = outputCollector;
-            countMap = new HashMap<String,Double>();
+            countMap = new HashMap<>();
 
         }
 
@@ -265,7 +263,6 @@ public class TopologiaDRCandidato {
     }
 
     private static class ImpressorEstadoBolt extends BaseRichBolt{
-        private String nomeCandidato;
         private String valorDR;
         private String tipoArquivo;
         private String estadoCandidato;
@@ -351,17 +348,17 @@ public class TopologiaDRCandidato {
 
             builder.setSpout("prestacao-contas-spout", new PrestaContasSpout(ipSocketEmmiter,portaSocketEmmiter), 1);
 
-            builder.setBolt("filtra-bolt", new FiltraContas(), 20).shuffleGrouping("prestacao-contas-spout");
+            builder.setBolt("filtra-bolt", new FiltraContas(), 4).shuffleGrouping("prestacao-contas-spout");
 
-            builder.setBolt("soma-bolt", new SomaContasBolt(), 20).fieldsGrouping("filtra-bolt", new Fields("nomeCandidato"));
+            builder.setBolt("soma-bolt", new SomaContasBolt(), 4).fieldsGrouping("filtra-bolt", new Fields("nomeCandidato"));
 
-            builder.setBolt("soma-estado-bolt", new SomaEstadoClassificaBolt(), 26).fieldsGrouping("filtra-bolt", new Fields("estadoCandidato"));
+            builder.setBolt("soma-estado-bolt", new SomaEstadoClassificaBolt(), 4).fieldsGrouping("filtra-bolt", new Fields("estadoCandidato"));
 
             builder.setBolt("impressor-estado-bolt", new ImpressorEstadoBolt(ipSocketEstadoReceiver,portaSocketEstadoReceiver),1).globalGrouping("soma-estado-bolt");
 
             builder.setBolt("impressor-bolt", new ImpressorBolt(ipSocketReceiver, portaSocketReceiver), 1).globalGrouping("soma-bolt");
 
-            conf.setNumWorkers(15);
+            conf.setNumWorkers(4);
 
             StormSubmitter.submitTopology(args[0], conf, builder.createTopology());
 
